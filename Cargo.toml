@@ -29,3 +29,4 @@ tinyjson = "2.5.1"
 
 # Solution dependencies
 nom = "7"
+regex = "1.10"
