@@ -8,6 +8,7 @@ use nom::{
     sequence::separated_pair,
     IResult,
 };
+use rayon::prelude::*;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 type Rule = (u32, u32);
@@ -41,51 +42,60 @@ fn parse_input(input: &str) -> IResult<&str, ParsedInput> {
 
 fn find_updates(input: &str) -> Option<(Vec<UpdateWithRules>, Vec<UpdateWithRules>)> {
     let (_, (rules, updates)) = parse_input(input).ok()?;
-    let mut valid_updates = Vec::new();
-    let mut invalid_updates = Vec::new();
 
-    for update in updates.into_iter() {
-        let mut valid_rules = Vec::new();
-        let mut page_map: HashMap<u32, Vec<usize>> = HashMap::new();
-        for (index, &page) in update.iter().enumerate() {
-            page_map.entry(page).or_default().push(index);
-        }
-
-        for rule in rules.iter() {
-            if page_map.contains_key(&rule.0) && page_map.contains_key(&rule.1) {
-                valid_rules.push(*rule);
+    // Use Rayon to parallelize the processing of updates
+    let (valid_updates, invalid_updates): (Vec<_>, Vec<_>) = updates
+        .par_iter()
+        .map(|update| {
+            let mut valid_rules = Vec::new();
+            let mut page_map: HashMap<u32, Vec<usize>> = HashMap::new();
+            for (index, &page) in update.iter().enumerate() {
+                page_map.entry(page).or_default().push(index);
             }
-        }
 
-        let mut is_correct = true;
-        for rule in valid_rules.iter() {
-            let before_indices = &page_map[&rule.0];
-            let after_indices = &page_map[&rule.1];
-            if before_indices.iter().max() > after_indices.iter().min() {
-                is_correct = false;
+            for rule in rules.iter() {
+                if page_map.contains_key(&rule.0) && page_map.contains_key(&rule.1) {
+                    valid_rules.push(*rule);
+                }
             }
-        }
 
-        if is_correct {
-            valid_updates.push((update, valid_rules));
-        } else {
-            invalid_updates.push((update, valid_rules));
-        }
-    }
+            let mut is_correct = true;
+            for rule in valid_rules.iter() {
+                let before_indices = &page_map[&rule.0];
+                let after_indices = &page_map[&rule.1];
+                if before_indices.iter().max() > after_indices.iter().min() {
+                    is_correct = false;
+                }
+            }
 
-    Some((valid_updates, invalid_updates))
+            if is_correct {
+                (Some((update.clone(), valid_rules)), None)
+            } else {
+                (None, Some((update.clone(), valid_rules)))
+            }
+        })
+        .unzip();
+
+    Some((
+        valid_updates.into_iter().flatten().collect(),
+        invalid_updates.into_iter().flatten().collect(),
+    ))
 }
 
 pub fn part_one(input: &str) -> Option<u32> {
     let (valid_updates, _) = find_updates(input)?;
-    let mut result = 0;
 
-    for (update, _) in valid_updates.iter() {
-        if !update.is_empty() {
-            let center_index = update.len() / 2;
-            result += update[center_index];
-        }
-    }
+    let result: u32 = valid_updates
+        .par_iter()
+        .filter_map(|(update, _)| {
+            if !update.is_empty() {
+                let center_index = update.len() / 2;
+                Some(update[center_index])
+            } else {
+                None
+            }
+        })
+        .sum();
 
     Some(result)
 }
@@ -144,15 +154,19 @@ fn reorder_update(update: &[u32], rules: &[Rule]) -> Vec<u32> {
 
 pub fn part_two(input: &str) -> Option<u32> {
     let (_, invalid_updates) = find_updates(input)?;
-    let mut result = 0;
 
-    for (update, rules) in invalid_updates {
-        let reordered = reorder_update(&update, &rules);
-        if !reordered.is_empty() {
-            let center_index = reordered.len() / 2;
-            result += reordered[center_index];
-        }
-    }
+    let result = invalid_updates
+        .par_iter()
+        .map(|(update, rules)| {
+            let reordered = reorder_update(update, rules);
+            if !reordered.is_empty() {
+                let center_index = reordered.len() / 2;
+                reordered[center_index]
+            } else {
+                0
+            }
+        })
+        .sum();
 
     Some(result)
 }
