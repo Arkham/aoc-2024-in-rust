@@ -24,21 +24,22 @@ fn parse_input(input: &str) -> Vec<Vec<u32>> {
         .collect()
 }
 
-fn is_valid_line(line: &Vec<u32>) -> bool {
+fn is_valid_line(line: &[u32]) -> bool {
     let mut increasing = true;
     let mut decreasing = true;
     let mut valid = true;
 
     for window in line.windows(2) {
         let diff = (window[0] as i32 - window[1] as i32).abs();
-        if diff < 1 || diff > 3 {
+        if !(1..=3).contains(&diff) {
             valid = false;
             break;
         }
-        if window[0] < window[1] {
-            decreasing = false;
-        } else if window[0] > window[1] {
-            increasing = false;
+
+        match window[0].cmp(&window[1]) {
+            std::cmp::Ordering::Less => decreasing = false,
+            std::cmp::Ordering::Greater => increasing = false,
+            std::cmp::Ordering::Equal => {}
         }
     }
 
@@ -67,7 +68,7 @@ pub fn part_two(input: &str) -> Option<u32> {
             safe_lines.push(line.clone());
         } else {
             for i in 0..line.len() {
-                let mut modified_line = line.clone();
+                let mut modified_line = line.to_vec();
                 modified_line.remove(i);
                 if is_valid_line(&modified_line) {
                     safe_lines.push(line.clone());
